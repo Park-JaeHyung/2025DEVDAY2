@@ -38,7 +38,7 @@ async function setupMediaPipe() {
     },
 // ...
         runningMode: "VIDEO", // 비디오 스트림용
-        numHands: 2 // 우선 손 1개만 인식
+        numHands: 1 // 우선 손 1개만 인식
     });
     console.log("HandLandmarker 준비 완료");
 
@@ -61,6 +61,7 @@ function predictWebcam() {
     canvasElement.width = video.videoWidth;
     canvasElement.height = video.videoHeight;
 
+    
     const videoTime = video.currentTime;
     
     // 1. AI 감지는 비디오 프레임이 새로 업데이트될 때만 실행 (성능 최적화)
