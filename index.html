@@ -3,6 +3,13 @@
 <head>
     <title>MediaPipe Hand Tracking Drag & Drop</title>
     <style>
+
+        body {
+            margin: 0;
+            overflow: hidden; /* 캔버스가 창보다 커져도 스크롤바가 생기지 않도록 숨깁니다. */
+        }
+
+
         /* 캔버스와 비디오를 겹치게 함 */
         #container { position: relative; }
         #webcam, #output_canvas {
@@ -13,6 +20,8 @@
         #webcam { display: none; } /* 비디오는 숨기고 캔버스에 그림 */
     </style>
 </head>
+
+
 <body>
     <h1>엄지와 검지로 원을 옮겨보세요</h1>
     <div id="container">

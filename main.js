@@ -21,7 +21,10 @@ let objectRadius = 30; // 현재 원의 반지름 (계속 변할 변수)
 const DEFAULT_RADIUS = 30; // 핀치를 안했을 때 돌아갈 기본 크기 (상수)
 let isDragging = false;
 
-
+// --- ⬇️ 새로 추가 (핀치 놓침 허용 오차) ---
+let pinchReleaseCounter = 0; // 핀치를 놓친 프레임 수를 카운트
+const PINCH_RELEASE_TOLERANCE = 5; // 5프레임(약 0.08초)까지는 봐줌 (이 값을 조절해 민감도 튜닝)
+// --- (여기까지 추가) ---
 
 
 // --- 1. Hand Landmarker 초기화 ---
@@ -94,103 +97,128 @@ function predictWebcam() {
     requestAnimationFrame(predictWebcam);
 }
 
-// --- 이 부분은 아래 3단계에서 채워나갑니다 ---
-// main.js 의 맨 아래에 추가
+
 
 // (E) --- 5. 핵심 로직: 상호작용 처리 함수 ---
 // (이 함수 전체를 아래 코드로 교체하세요)
+// (E) --- 5. 핵심 로직: 상호작용 처리 함수 ---
+// (이 함수 전체를 복사해서 교체하세요)
 function handleObjectInteraction(results) {
     
-    // 로컬(지역) 변수로 상태를 초기화합니다.
+    // 1. [제스처 계산]
     let isPinching = false;
     let pinchMidPoint = null;
-    let isOverlapping = false; // '겹침' 상태를 저장할 변수
+    let handSizeInPixels = 0;
+    let isHandDetected = (results.landmarks && results.landmarks.length > 0);
+    
+    const canvasWidth = canvasElement.width;
+    const canvasHeight = canvasElement.height;
 
-    // 1. [손 감지 확인]
-    if (results.landmarks && results.landmarks.length > 0) {
+    if (isHandDetected) {
+        // 손이 감지되면
         const landmarks = results.landmarks[0]; 
         const thumbTip = landmarks[4];
         const indexTip = landmarks[8];
 
-        // 2. [좌표 변환]
-        const canvasWidth = canvasElement.width;
-        const canvasHeight = canvasElement.height;
-        const thumbPos = { x: (1 - thumbTip.x) * canvasWidth, y: thumbTip.y * canvasHeight };
-        const indexPos = { x: (1 - indexTip.x) * canvasWidth, y: indexTip.y * canvasHeight };
+        // 헬퍼 함수를 사용하여 좌표 변환
+        const thumbPos = getPixelPos(thumbTip, canvasWidth, canvasHeight);
+        const indexPos = getPixelPos(indexTip, canvasWidth, canvasHeight);
 
-        // 3. [핀치(Pinch) 감지]
+        // 핀치 거리 계산
         const distance = Math.hypot(thumbPos.x - indexPos.x, thumbPos.y - indexPos.y);
         const pinchThreshold = 40;
 
         if (distance < pinchThreshold) {
-            // 핀치 중일 때
+            // [핀치 중일 때]
             isPinching = true;
             pinchMidPoint = { 
                 x: (thumbPos.x + indexPos.x) / 2, 
                 y: (thumbPos.y + indexPos.y) / 2 
             };
             
-            // 4. [겹침(Overlap) 확인]
-            // 핀치한 위치가 *현재* 원의 반경 내에 있는지 확인합니다.
-            isOverlapping = isPointInCircle(pinchMidPoint, objectPos, objectRadius);
+            // 손 크기 계산 (크기 조절에 사용)
+            const wrist = landmarks[0];
+            const middleMcp = landmarks[9];
+
+            const wristPos = getPixelPos(wrist, canvasWidth, canvasHeight);
+            const middleMcpPos = getPixelPos(middleMcp, canvasWidth, canvasHeight);
+            
+            handSizeInPixels = Math.hypot(wristPos.x - middleMcpPos.x, wristPos.y - middleMcpPos.y);
         }
-        // (핀치하지 않으면 isPinching과 isOverlapping은 모두 false로 유지됩니다)
     }
-    // (손이 감지되지 않아도 isPinching과 isOverlapping은 모두 false로 유지됩니다)
+    // (🚨 이전 코드에서는 여기에 닫는 괄호 '}'가 있었습니다. 그것이 오류입니다.)
 
-
-    // 5. [상태 관리 및 로직 실행]
-    // ⭐️ 사용자 요청의 핵심 로직입니다: "핀치 중" AND "겹침"
-    if (isPinching && isOverlapping) {
-        // [상태 A: 잡기 시작 또는 잡고 있는 중]
+    
+    // 2. [핵심 상태 관리 로직 (허용 오차 적용됨)]
+    // (이 로직은 함수 *안에* 있어야 합니다)
+    
+    if (isDragging) {
+        // [상태 A: 이미 드래그 중일 때]
         
-        // 1. '잡기' 상태로 만듭니다.
-        isDragging = true;
+        if (isPinching) {
+            // A-1: 핀치를 '유지'하고 있음
+            
+            pinchReleaseCounter = 0; // 핀치 놓침 카운터 리셋
+            
+            // 원의 위치를 현재 손가락 위치로 이동
+            objectPos.x = pinchMidPoint.x;
+            objectPos.y = pinchMidPoint.y;
+            
+            // ⭐️ 요청하신 튜닝 값으로 원의 크기를 조절 ⭐️
+            const MIN_HAND_SIZE = 30;   // ✅ 수정됨
+            const MAX_HAND_SIZE = 250;  // ✅ 수정됨
+            const MIN_RADIUS = 10;      // ✅ 수정됨
+            const MAX_RADIUS = 80;      // ✅ 수정됨
+            objectRadius = mapRange(handSizeInPixels, MIN_HAND_SIZE, MAX_HAND_SIZE, MIN_RADIUS, MAX_RADIUS);
+            
+        } else if (isHandDetected) {
+            // A-2: 핀치를 '놓쳤지만' (플리커링) 손은 아직 보임
+            pinchReleaseCounter++; // 카운터 증가
+            
+            if (pinchReleaseCounter > PINCH_RELEASE_TOLERANCE) {
+                // 허용 오차 초과: 진짜로 놓은 것으로 판단
+                isDragging = false;
+                pinchReleaseCounter = 0; 
+            }
+            // else: (아직 허용 오차 범위 내) -> isDragging = true 유지
+            
+        } else {
+            // A-3: 손이 아예 사라짐
+            isDragging = false; // 즉시 드래그 종료
+            pinchReleaseCounter = 0;
+        }
         
-        // 2. 원의 크기를 조절합니다. (손 크기 계산 로직)
-        const landmarks = results.landmarks[0];
-        const wrist = landmarks[0];
-        const middleMcp = landmarks[9];
-        const canvasWidth = canvasElement.width;
-        const canvasHeight = canvasElement.height;
-        const wristPos = { x: (1 - wrist.x) * canvasWidth, y: wrist.y * canvasHeight };
-        const middleMcpPos = { x: (1 - middleMcp.x) * canvasWidth, y: middleMcp.y * canvasHeight };
-        const handSizeInPixels = Math.hypot(wristPos.x - middleMcpPos.x, wristPos.y - middleMcpPos.y);
-        
-
-        //손크기 확인용 콘솔 출력
-        //console.log("현재 손 크기 (픽셀):", handSizeInPixels);
-
-
-        //손크기 민감도
-        const MIN_HAND_SIZE = 30, MAX_HAND_SIZE = 250;
-        const MIN_RADIUS = 10, MAX_RADIUS = 80;
-
-
-
-
-        objectRadius = mapRange(handSizeInPixels, MIN_HAND_SIZE, MAX_HAND_SIZE, MIN_RADIUS, MAX_RADIUS);
-        
-        // 3. 원의 위치를 손가락 위치로 이동시킵니다.
-        objectPos.x = pinchMidPoint.x;
-        objectPos.y = pinchMidPoint.y;
-
     } else {
-        // [상태 B: 핀치를 놓았거나(isPinching=F) 원 밖에서 핀치할 때(isOverlapping=F)]
+        // [상태 B: 드래그 중이 아닐 때]
         
-        // 1. '잡기' 상태를 해제합니다.
-        isDragging = false;
+        pinchReleaseCounter = 0; // 카운터 리셋
         
-        // 2. 원의 크기를 기본값으로 되돌립니다.
-        //objectRadius = DEFAULT_RADIUS;
-        
-        // (원의 위치는 마지막 자리에 고정됩니다)
+        if (isPinching) {
+            // B-1: 핀치를 '시작'함
+            const isOverlapping = isPointInCircle(pinchMidPoint, objectPos, objectRadius);
+            
+            if (isOverlapping) {
+                // [드래그 시작!]
+                isDragging = true; 
+                
+                // (첫 프레임 위치/크기 업데이트 - 여기도 튜닝 값 적용)
+                objectPos.x = pinchMidPoint.x;
+                objectPos.y = pinchMidPoint.y;
+                
+                const MIN_HAND_SIZE = 30;
+                const MAX_HAND_SIZE = 250;
+                const MIN_RADIUS = 10;
+                const MAX_RADIUS = 80;
+                objectRadius = mapRange(handSizeInPixels, MIN_HAND_SIZE, MAX_HAND_SIZE, MIN_RADIUS, MAX_RADIUS);
+            }
+        }
     }
 
-    // 6. [최종 그리기]
-    // isDragging 상태에 따라 색상을 변경하여 그립니다.
+    // 3. [최종 그리기]
+    // (이 로직도 함수 *안에* 있어야 합니다)
     drawCircle(objectPos.x, objectPos.y, objectRadius, isDragging ? "red" : "blue");
-}
+
+} // ✅✅✅ 여기가 함수의 *올바른* 끝입니다! ✅✅✅
     
 
 // --- 유틸리티 함수 (main.js 하단에 추가) ---
@@ -230,10 +258,22 @@ function mapRange(value, inMin, inMax, outMin, outMax) {
     // 값이 출력 범위를 벗어나지 않도록 'clamp'(제한)
     return Math.max(outMin, Math.min(outMax, mappedValue));
 }
-
+/**
+ * [추가!] MediaPipe 랜드마크를 캔버스 픽셀 좌표로 변환 (좌우 반전 포함)
+ * @param {object} landmark - MediaPipe 랜드마크 (x, y, z 포함)
+ * @param {number} canvasWidth - 캔버스 너비
+ * @param {number} canvasHeight - 캔버스 높이
+ * @returns {object} - {x, y} 픽셀 좌표
+ */
+function getPixelPos(landmark, canvasWidth, canvasHeight) {
+    return {
+        x: (1 - landmark.x) * canvasWidth, // 좌우 반전
+        y: landmark.y * canvasHeight
+    };
+}
 
 
 
 
 // --- 실행 ---
-setupMediaPipe();
+setupMediaPipe()
