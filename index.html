@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MediaPipe Hand Tracking Drag & Drop</title>
+    <style>
+        /* 캔버스와 비디오를 겹치게 함 */
+        #container { position: relative; }
+        #webcam, #output_canvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 640px; height: 480px;
+        }
+        #webcam { display: none; } /* 비디오는 숨기고 캔버스에 그림 */
+    </style>
+</head>
+<body>
+    <h1>엄지 검지로 원을 옮겨보세요</h1>
+    <div id="container">
+        <video id="webcam" autoplay playsinline></video>
+        <canvas id="output_canvas" width="640" height="480"></canvas>
+    </div>
+
+<script type="module" src="main.js"></script>
+
+</body>
+</html>
